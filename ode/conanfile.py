@@ -39,16 +39,24 @@ class OdeConan(ConanFile):
         self.cpp_info.names["pkg_config"] = "ode"
         
         if self.options.double_precision:
-            name = 'ode_double'
             self.cpp_info.defines = ['dIDEDOUBLE']
         else:
-            name = 'ode_single'
             self.cpp_info.defines = ['dIDESINGLE']
-
-        if not self.options.shared:
-            name += 's'
         
-        if self.settings.build_type == 'Debug':
-            name += 'd'
+        name = self.name
+        
+        if self.settings.os == "Windows":
+            if self.options.double_precision:
+                name += '_double'
+            else:
+                name += '_single'
+
+            if not self.options.shared:
+                name += 's'
+            if self.settings.build_type == 'Debug':
+                name += 'd'
         
         self.cpp_info.libs = [name]
+        
+        if self.settings.os == 'Linux':
+            self.cpp_info.libs.append('pthread')
