@@ -21,8 +21,7 @@ class OdeConan(ConanFile):
             del self.options.fPIC
 
     def build(self):
-        cmake = CMake(self)
-        cmake.generator = "Ninja"
+        cmake = CMake(self, generator="Ninja")
         cmake.configure(source_folder="tensorflow/lite")
         cmake.build()
 
