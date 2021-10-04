@@ -18,19 +18,23 @@ class OdeConan(ConanFile):
     def config_options(self):
         if self.settings.os == "Windows":
             del self.options.fPIC
-
-    def build(self):
-        cmake = CMake(self)
+            
+    def _configure_cmake(self):
+        cmake = CMake(self, generator="Ninja")
         cmake.definitions["ODE_WITH_DEMOS"] = False
         cmake.definitions["ODE_WITH_TESTS"] = False
         cmake.definitions["ODE_DOUBLE_PRECISION"] = self.options.double_precision
         cmake.configure()
+        return cmake
+
+    def build(self):
+        cmake = self._configure_cmake()
         cmake.build()
 
     def package(self):
         self.copy("LICENSE*", dst="licenses")
         self.copy("COPYING", dst="licenses")
-        cmake = CMake(self)
+        cmake = self._configure_cmake()
         cmake.install()
 
     def package_info(self):
@@ -59,4 +63,4 @@ class OdeConan(ConanFile):
         self.cpp_info.libs = [name]
         
         if self.settings.os == 'Linux':
-            self.cpp_info.libs.append('pthread')
+            self.cpp_info.system_libs = ['pthread']
