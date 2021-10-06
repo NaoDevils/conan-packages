@@ -39,4 +39,7 @@ class OdeConan(ConanFile):
         self.copy("*.h", dst="include/flatbuffers", src="{}/flatbuffers/include/flatbuffers".format(self.build_folder), keep_path=True, symlinks=True)
 
     def package_info(self):
-        self.cpp_info.libs = ['clog', 'cpuinfo', 'farmhash', 'fft2d_fftsg', 'fft2d_fftsg2d', 'flatbuffers', 'pthreadpool', 'ruy', 'tensorflow-lite', 'XNNPACK']
+        self.cpp_info.libs = ['tensorflow-lite', 'ruy', 'XNNPACK', 'farmhash', 'fft2d_fftsg', 'fft2d_fftsg2d', 'flatbuffers', 'pthreadpool', 'cpuinfo', 'clog']
+        
+        if self.settings.os == "Linux":
+            self.cpp_info.system_libs.append("dl")
