@@ -51,7 +51,7 @@ class PortaudioConan(ConanFile):
             if self.options.with_alsa:
                 self.requires("libalsa/1.1.9")
 
-    def system_requirements(self):
+    def build_requirements(self):
         if self.settings.os == "Linux":
             if tools.os_info.with_apt:
                 installer = tools.SystemPackageTool()
