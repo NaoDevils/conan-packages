@@ -1,0 +1,4 @@
+sources:
+  "2.2.1":
+    url: "https://github.com/tklute/flite/archive/refs/tags/v2021_11.tar.gz"
+    sha256: "80fe197854e5b7bed9a817f38be6421445521923d59f7fc130acb0c4f9f7a12a"
