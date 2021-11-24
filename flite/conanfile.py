@@ -15,15 +15,18 @@ class FliteConan(ConanFile):
 
     settings = "os", "compiler", "build_type", "arch"
     options = {
+        "shared": [True, False],
         "fPIC": [True, False],
+        "with_utils": [True, False],
     }
     default_options = {
+        "shared": False,
         "fPIC": True,
+        "with_utils": False,
     }
 
     _source_subfolder = "source_subfolder"
-    _build_subfolder = "build_subfolder"
-    _cmake = None
+    _autotools = None
         
     def configure(self):
        del self.settings.compiler.libcxx       
@@ -34,30 +37,35 @@ class FliteConan(ConanFile):
 
     def source(self):
         tools.get(**self.conan_data["sources"][self.version], strip_root=True, destination=self._source_subfolder)
+        
+    def _configure_autotools(self):
+        if self._autotools:
+            return self._autotools
+            
+        self._autotools = AutoToolsBuildEnvironment(self)
+        self._autotools.configure(args=["--with-audio=none"])
+        return self._autotools
 
     def build(self):    
-        autotools = AutoToolsBuildEnvironment(self)
-        autotools.fpic = True
-        conf_args = []
-        conf_args += ["--with-audio=none"]        
-        autotools.configure(args=conf_args, configure_dir=self._source_subfolder)
         with tools.chdir(self._source_subfolder):
+            autotools = self._configure_autotools()
             autotools.make()
-      #      autotools.make(target="get_voices")      
       
     def package(self):
-        self.copy("LICENSE*", dst="licenses")
-        self.copy("COPYING", dst="licenses")
+        with tools.chdir(self._source_subfolder):
+            autotools = self._configure_autotools()
+            autotools.install()
+            
+        if not self.options.with_utils:
+            tools.rmdir(os.path.join(self.package_folder, "bin"))
+            
+        # TODO: Remove libflite_cmu_*.a ?
         
-        self.copy(pattern="*.lib", dst="lib", src=self.build_folder , keep_path=False, symlinks=True)
-        self.copy(pattern="*.a", dst="lib", src=self.build_folder , keep_path=False, symlinks=True)
-
-        self.copy(pattern="*.flitevox", dst="voices", src=self.build_folder , keep_path=False, symlinks=True)
-        
-        #self.copy(pattern="*.h", dst="include/flite", src=os.path.join(self.build_folder,"include") , keep_path=True, symlinks=True)
-        self.copy(pattern="*.h", dst="include/flite", src=self.source_folder , keep_path=True, symlinks=True)
+        self.copy("LICENSE*", dst="licenses", src=self._source_subfolder)
+        self.copy("COPYING", dst="licenses", src=self._source_subfolder)
 
     def package_info(self):
-        self.cpp_info.libs = ['flite']
+        self.cpp_info.libs = ['flite_usenglish','flite_cmulex','flite']
         
-      
+        self.cpp_info.system_libs = ['m']
+ 

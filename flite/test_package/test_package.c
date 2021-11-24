@@ -1,5 +1,9 @@
-#include <flite.h>
+#include <flite/flite.h>
+#include <flite/flite_version.h>
 #include <stdio.h>
+
+void usenglish_init(cst_voice* v);
+cst_lexicon* cmulex_init(void);
 
 int main() {
   printf("  Carnegie Mellon University, Copyright (c) 1999-2016, all rights reserved\n");
