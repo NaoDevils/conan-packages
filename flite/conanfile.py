@@ -1,4 +1,4 @@
-from conans import ConanFile, CMake, AutoToolsBuildEnvironment, tools
+from conans import ConanFile, CMake, AutoToolsBuildEnvironment, MSBuild, tools
 from conans.errors import ConanInvalidConfiguration
 import os
 
@@ -41,31 +41,45 @@ class FliteConan(ConanFile):
     def _configure_autotools(self):
         if self._autotools:
             return self._autotools
-            
+
         self._autotools = AutoToolsBuildEnvironment(self)
         self._autotools.configure(args=["--with-audio=none"])
         return self._autotools
 
     def build(self):    
-        with tools.chdir(self._source_subfolder):
+        if self.settings.os == "Windows":
+          with tools.chdir(self._source_subfolder + "/sapi"):
+            msbuild = MSBuild(self)
+            msbuild.build("flite_conan.sln")
+        else:        
+          with tools.chdir(self._source_subfolder):
             autotools = self._configure_autotools()
             autotools.make()
-      
+                  
     def package(self):
-        with tools.chdir(self._source_subfolder):
-            autotools = self._configure_autotools()
-            autotools.install()
+        if self.settings.os == "Windows":
+          with tools.chdir(self._source_subfolder):
+            tools.rename(self.build_folder+"/source_subfolder/sapi/x64/Release/usenglish.lib", self.build_folder+"/source_subfolder/sapi/x64/Release/flite_usenglish.lib")
+            tools.rename(self.build_folder+"/source_subfolder/sapi/x64/Release/cmulex.lib", self.build_folder+"/source_subfolder/sapi/x64/Release/flite_cmulex.lib")
+            self.copy("*.lib", dst="lib", src=self._source_subfolder, keep_path=False)
+            self.copy("*/flite*.h", dst="include/flite", src=self.source_folder, keep_path=False)
+            self.copy("*/cst_*.h", dst="include/flite", src=self.source_folder, keep_path=False)
+        else:
+          with tools.chdir(self._source_subfolder):
+              autotools = self._configure_autotools()
+              autotools.install()
             
-        if not self.options.with_utils:
-            tools.rmdir(os.path.join(self.package_folder, "bin"))
+          if not self.options.with_utils:
+              tools.rmdir(os.path.join(self.package_folder, "bin"))
             
-        # TODO: Remove libflite_cmu_*.a ?
-        
+          # TODO: Remove libflite_cmu_*.a ?
+          
         self.copy("LICENSE*", dst="licenses", src=self._source_subfolder)
         self.copy("COPYING", dst="licenses", src=self._source_subfolder)
 
     def package_info(self):
         self.cpp_info.libs = ['flite_usenglish','flite_cmulex','flite']
         
-        self.cpp_info.system_libs = ['m']
+        if not self.settings.os == "Windows":
+          self.cpp_info.system_libs = ['m']
  
