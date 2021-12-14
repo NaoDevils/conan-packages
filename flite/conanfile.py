@@ -71,8 +71,8 @@ class FliteConan(ConanFile):
             
           if not self.options.with_utils:
               tools.rmdir(os.path.join(self.package_folder, "bin"))
-            
-          # TODO: Remove libflite_cmu_*.a ?
+          
+          tools.remove_files_by_mask(os.path.join(self.package_folder, "lib"), "libflite_cmu_*.a")
           
         self.copy("LICENSE*", dst="licenses", src=self._source_subfolder)
         self.copy("COPYING", dst="licenses", src=self._source_subfolder)
