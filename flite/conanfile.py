@@ -58,12 +58,12 @@ class FliteConan(ConanFile):
                   
     def package(self):
         if self.settings.os == "Windows":
-          with tools.chdir(self._source_subfolder):
-            tools.rename(self.build_folder+"/source_subfolder/sapi/x64/Release/usenglish.lib", self.build_folder+"/source_subfolder/sapi/x64/Release/flite_usenglish.lib")
-            tools.rename(self.build_folder+"/source_subfolder/sapi/x64/Release/cmulex.lib", self.build_folder+"/source_subfolder/sapi/x64/Release/flite_cmulex.lib")
+          with tools.chdir(self.package_folder):
             self.copy("*.lib", dst="lib", src=self._source_subfolder, keep_path=False)
             self.copy("*/flite*.h", dst="include/flite", src=self.source_folder, keep_path=False)
             self.copy("*/cst_*.h", dst="include/flite", src=self.source_folder, keep_path=False)
+            tools.rename("lib/usenglish.lib", "lib/flite_usenglish.lib")
+            tools.rename("lib/cmulex.lib", "lib/flite_cmulex.lib")
         else:
           with tools.chdir(self._source_subfolder):
               autotools = self._configure_autotools()
