@@ -22,6 +22,14 @@ class OdeConan(ConanFile):
 
     def build(self):
         cmake = CMake(self, generator="Ninja")
+        
+        # fixes shared library build on Windows
+        if self.settings.os == "Windows" and self.options.shared:
+            # some sub libraries do not export their symbols correctly
+            cmake.definitions['CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS'] = True
+            # cpuinfo does not link properly as a shared library
+            cmake.definitions['CPUINFO_LIBRARY_TYPE'] = "static"
+        
         cmake.configure(source_folder="tensorflow/lite")
         cmake.build()
 
