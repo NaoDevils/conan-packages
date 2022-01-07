@@ -1,7 +1,8 @@
-cmake_minimum_required(VERSION 3.15)
-project(PackageTest CXX)
+cmake_minimum_required(VERSION 3.1.0)
+project(test_package)
 
-find_package(tensorflow-lite CONFIG REQUIRED)
+include(${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
+conan_basic_setup()
 
-add_executable(example example.cpp)
-target_link_libraries(example tensorflow-lite::tensorflow-lite)
+add_executable(${PROJECT_NAME} test_package.cpp)
+target_link_libraries(${PROJECT_NAME} ${CONAN_LIBS})
