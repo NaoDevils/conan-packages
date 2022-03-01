@@ -27,6 +27,9 @@ class OdeConan(ConanFile):
         cmake.configure()
         return cmake
 
+    def build_requirements(self):
+        self.build_requires("ninja/1.10.2")
+
     def build(self):
         cmake = self._configure_cmake()
         cmake.build()
