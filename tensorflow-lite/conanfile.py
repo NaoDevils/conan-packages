@@ -20,6 +20,9 @@ class OdeConan(ConanFile):
         if self.settings.os == "Windows":
             del self.options.fPIC
 
+    def build_requirements(self):
+        self.build_requires("ninja/1.10.2")
+
     def build(self):
         cmake = CMake(self, generator="Ninja")
         
