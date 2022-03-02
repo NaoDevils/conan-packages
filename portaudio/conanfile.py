@@ -19,12 +19,14 @@ class PortaudioConan(ConanFile):
     options = {
         "shared": [True, False],
         "fPIC": [True, False],
+        "with_system_alsa": [True, False],
         "with_alsa": [True, False],
         "with_jack": [True, False]
     }
     default_options = {
         "shared": False,
         "fPIC": True,
+        "with_system_alsa": True,
         "with_alsa": False,
         "with_jack": False
     }
@@ -43,6 +45,7 @@ class PortaudioConan(ConanFile):
         if self.settings.os == "Windows":
             self.options.remove("fPIC")
         if self.settings.os != "Linux":
+            self.options.remove("with_system_alsa")
             self.options.remove("with_alsa")
             self.options.remove("with_jack")
 
@@ -54,13 +57,15 @@ class PortaudioConan(ConanFile):
     def build_requirements(self):
         if self.settings.os == "Linux":
             if tools.os_info.with_apt:
-                installer = tools.SystemPackageTool()
-                installer.install("libasound2-dev") 
+                installer = tools.SystemPackageTool()                
+                if self.options.get_safe("with_system_alsa", False):
+                    installer.install("libasound2-dev") 
                 if self.options.with_jack:
                     installer.install("libjack-dev")
             elif tools.os_info.with_yum:
                 installer = tools.SystemPackageTool()
-                installer.install("alsa-lib-devel")
+                if self.options.get_safe("with_system_alsa", False):
+                    installer.install("alsa-lib-devel")
                 if self.settings.arch == "x86" and tools.detected_architecture() == "x86_64":
                     installer.install("glibmm24.i686")
                     installer.install("glibc-devel.i686")
@@ -76,10 +81,11 @@ class PortaudioConan(ConanFile):
             self._cmake.definitions["PA_BUILD_STATIC"] = not self.options.shared
             self._cmake.definitions["PA_BUILD_SHARED"] = self.options.shared
             self._cmake.definitions["PA_USE_JACK"] = self.options.get_safe("with_jack", False)
-            if self.options.get_safe("with_alsa", False): # with_alsa=False just makes portaudio use the Linux distro's alsa
-                                                          # as a workaround to the fact that conancenter's alsa does not work,
-                                                          # at least some of the time (no devices detected by portaudio)
-                self._cmake.definitions["PA_USE_ALSA"] = True
+            # with_system_alsa=True just makes portaudio use the Linux distro's alsa
+            # as a workaround to the fact that conancenter's alsa does not work,
+            # at least some of the time (no devices detected by portaudio)
+            self._cmake.definitions["PA_USE_ALSA"] = self.options.get_safe("with_alsa", False) or self.options.get_safe("with_system_alsa", False)
+            
             self._cmake.configure()
         return self._cmake
 
@@ -106,6 +112,8 @@ class PortaudioConan(ConanFile):
             self.cpp_info.system_libs.extend(["winmm", "setupapi"])
 
         if self.settings.os == "Linux" and not self.options.shared:
-            self.cpp_info.system_libs.extend(["m", "pthread", "asound"])
+            self.cpp_info.system_libs.extend(["m", "pthread"])
+            if(self.options.get_safe("with_system_alsa", False)):
+                self.cpp_info.system_libs.append("asound")
             if self.options.with_jack:
                 self.cpp_info.system_libs.append("jack")
