@@ -3,7 +3,7 @@ import os
 
 class OsqpConan(ConanFile):
     name = "osqp"
-    license = "MIT"
+    license = ("Apache-2.0")
     author = "Aaron Larisch <aaron.larisch@tu-dortmund.de>"
     url = "https://github.com/NaoDevils/conan-packages"
     description = "Conan package for the OSQP library, the Operator Splitting QP solver"
@@ -54,7 +54,7 @@ class OsqpConan(ConanFile):
         git = tools.Git(folder=self._source_subfolder)
         git.clone("https://github.com/osqp/osqp.git")
         git.checkout("v{}".format(self.version), submodule="recursive")
-            
+        
     def _configure_cmake(self):
         if not self._cmake:
             self._cmake = CMake(self)
