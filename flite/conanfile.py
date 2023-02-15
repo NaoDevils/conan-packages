@@ -27,6 +27,10 @@ class FliteConan(ConanFile):
 
     _source_subfolder = "source_subfolder"
     _autotools = None
+    
+    def build_requirements(self):
+        if self.settings.os != "Windows":
+            self.build_requires("make/4.3") # Make 4.4 is currently incompatible
         
     def configure(self):
        del self.settings.compiler.libcxx       
