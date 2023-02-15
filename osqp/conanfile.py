@@ -6,6 +6,7 @@ class OsqpConan(ConanFile):
     license = ("Apache-2.0")
     author = "Aaron Larisch <aaron.larisch@tu-dortmund.de>"
     url = "https://github.com/NaoDevils/conan-packages"
+    homepage = "https://osqp.org"
     description = "Conan package for the OSQP library, the Operator Splitting QP solver"
     topics = ("C++", "QP", "Solver")
     settings = "os", "compiler", "build_type", "arch"

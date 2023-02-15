@@ -9,8 +9,8 @@ class FliteConan(ConanFile):
     version = "2.2.1"
     topics = ("flite", "text2speech")
     description = "Flite is a small run-time speech synthesis engine"
-    url = "https://github.com/festvox/flite"
-    homepage = "http://www.speech.cs.cmu.edu/flite/"
+    url = "https://github.com/NaoDevils/conan-packages"
+    homepage = "https://github.com/festvox/flite"
     license = "BSD"
 
     settings = "os", "compiler", "build_type", "arch"

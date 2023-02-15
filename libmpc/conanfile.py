@@ -7,6 +7,7 @@ class LibmpcConan(ConanFile):
     name = "libmpc"
     author = "Aaron Larisch <aaron.larisch@tu-dortmund.de>"
     url = "https://github.com/NaoDevils/conan-packages"
+    homepage = "https://github.com/nicolapiccinelli/libmpc"
     description = "Conan package for libmpc++, a C++ library to solve linear and non-linear MPC"
     topics = ("C++", "MPC")
     settings = "os", "compiler", "build_type", "arch"

@@ -4,8 +4,9 @@ class OdeConan(ConanFile):
     name = "ode"
     
     license = ("LGPL-2.1+", "BSD-3-Clause")
-    author = "Russell L. Smith"
+    author = "Aaron Larisch <aaron.larisch@tu-dortmund.de>"
     url = "https://github.com/NaoDevils/conan-packages"
+    homepage = "https://www.ode.org"
     description = "ODE is an open source, high performance library for simulating rigid body dynamics."
     
     settings = "os", "compiler", "build_type", "arch"
