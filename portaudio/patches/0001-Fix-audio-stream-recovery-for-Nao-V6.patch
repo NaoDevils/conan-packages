@@ -1,0 +1,41 @@
+From f96d36e2bdfcfa469d7faed6b5d905044d243972 Mon Sep 17 00:00:00 2001
+From: Aaron Larisch <aaron.larisch@tu-dortmund.de>
+Date: Tue, 9 May 2023 19:22:20 +0200
+Subject: [PATCH] Fix audio stream recovery for Nao V6
+
+---
+ src/hostapi/alsa/pa_linux_alsa.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/src/hostapi/alsa/pa_linux_alsa.c b/src/hostapi/alsa/pa_linux_alsa.c
+index a66f90d..2a6cdf6 100644
+--- a/src/hostapi/alsa/pa_linux_alsa.c
++++ b/src/hostapi/alsa/pa_linux_alsa.c
+@@ -3833,7 +3833,7 @@ static PaError PaAlsaStream_WaitForFrames( PaAlsaStream *self, unsigned long *fr
+         }
+ #endif
+ 
+-        pollResults = poll( self->pfds, totalFds, pollTimeout );
++        pollResults = poll( self->pfds, totalFds, 0 );
+ 
+ #ifdef PTHREAD_CANCELED
+         if( self->callbackMode )
+@@ -3871,13 +3871,13 @@ static PaError PaAlsaStream_WaitForFrames( PaAlsaStream *self, unsigned long *fr
+                 Pa_Sleep( 1 ); /* avoid hot loop */
+             }
+             /* not else ! */
+-            if( timeouts >= 2048 ) /* audio device not working, shall return error to notify waiters */
++            if( timeouts >= 64 ) /* audio device not working, shall return error to notify waiters */
+             {
+                 *framesAvail = 0; /* no frames available for processing */
+                 xrun = 1; /* try recovering device */
+ 
+                 PA_DEBUG(( "%s: poll timed out\n", __FUNCTION__, timeouts ));
+-                goto end;/*PA_ENSURE( paTimedOut );*/
++                PA_ENSURE( paTimedOut );
+             }
+         }
+         else if( pollResults > 0 )
+-- 
+2.39.1.windows.1
+

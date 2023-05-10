@@ -1,4 +1,5 @@
 from conans import ConanFile, CMake, AutoToolsBuildEnvironment, tools
+from conan.tools.files import apply_conandata_patches, export_conandata_patches
 from conans.errors import ConanInvalidConfiguration
 import os
 
@@ -38,6 +39,9 @@ class PortaudioConan(ConanFile):
     def validate(self):
         if self.settings.compiler == "apple-clang" and tools.Version(self.settings.compiler.version) < "11":
             raise ConanInvalidConfiguration("This recipe does not support Apple-Clang versions < 11")
+        
+    def export_sources(self):
+        export_conandata_patches(self)
 
     def configure(self):
         del self.settings.compiler.libcxx
@@ -90,6 +94,7 @@ class PortaudioConan(ConanFile):
         return self._cmake
 
     def build(self):
+        apply_conandata_patches(self)
         cmake = self._configure_cmake()
         cmake.build()
 
