@@ -1,0 +1,39 @@
+From 5f172ae62d0977ce53ca3545840c5522d4e0da53 Mon Sep 17 00:00:00 2001
+From: Aaron Larisch <aaron.larisch@tu-dortmund.de>
+Date: Wed, 24 May 2023 14:33:51 +0200
+Subject: [PATCH] Fix libf2c dependency
+
+---
+ CMakeLists.txt     | 2 ++
+ src/CMakeLists.txt | 2 +-
+ 2 files changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 0388a11..1a801a5 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -27,6 +27,8 @@ option(USE_FORTRAN_SUBDIRECTORY "Use cmake to generate sub project for fortran p
+ option(DISABLE_TESTS "Disable unit tests." OFF)
+ 
+ find_package(Eigen3 QUIET NO_CMAKE_PACKAGE_REGISTRY)
++find_package(libf2c REQUIRED)
++
+ if(Eigen3_FOUND)
+   add_project_dependency(Eigen3 REQUIRED NO_CMAKE_PACKAGE_REGISTRY)
+ else()
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index a790ff2..a860a17 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -63,7 +63,7 @@ endif()
+ endif()
+ 
+ if(${USE_F2C})
+-  target_link_libraries(${PROJECT_NAME} PUBLIC libf2c.a)
++  target_link_libraries(${PROJECT_NAME} PRIVATE libf2c::libf2c)
+ endif()
+ 
+ install(
+-- 
+2.40.1.windows.1
+
