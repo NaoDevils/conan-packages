@@ -2,3 +2,6 @@ sources:
   "3.3.5":
     url: https://github.com/google-deepmind/mujoco/archive/refs/tags/3.3.5.tar.gz
     sha256: ae19ac122b0ec06001a1a49cdb11775d4af3fae90e059a558ab913c5a512715d
+  "3.4.0":
+    url: https://github.com/google-deepmind/mujoco/archive/refs/tags/3.4.0.tar.gz
+    sha256: adff5e9397aac20189ee1525aabf1fbecc63c43697e8ad66a61220222983810f 
