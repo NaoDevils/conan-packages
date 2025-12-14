@@ -4,4 +4,4 @@ project(PackageTest CXX)
 find_package(ODE CONFIG REQUIRED)
 
 add_executable(example example.cpp)
-target_link_libraries(example ODE::ODE)
+target_link_libraries(example ode::ode)
