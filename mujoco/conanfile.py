@@ -1,4 +1,5 @@
 from conans import ConanFile, tools, CMake
+import os
 
 class MuJoCoConan(ConanFile):
     name = "mujoco"
@@ -15,7 +16,11 @@ class MuJoCoConan(ConanFile):
 
     def source(self):
         tools.get(**self.conan_data["sources"][self.version], destination=self.source_folder, strip_root=True)
-    
+
+    def requirements(self):
+        if self.settings.os == "Windows" and self.options.get_safe("shared", True):
+            self.requires("msvc-runtime/14.44")
+            
     def config_options(self):
         if self.settings.os == "Windows":
             del self.options.fPIC
@@ -40,13 +45,6 @@ class MuJoCoConan(ConanFile):
         self.cpp_info.names["cmake_find_package"] = "MuJoCo"
         self.cpp_info.names["cmake_find_package_multi"] = "MuJoCo"
         self.cpp_info.names["pkg_config"] = "mujoco"
-        
-        name = self.name
-        
-        if self.settings.os == "Windows":
-            if not self.options.shared:
-                name += 's'
-            if self.settings.build_type == 'Debug':
-                name += 'd'
-        
-        self.cpp_info.libs = [name]
+        self.cpp_info.bindirs = ["bin"]
+        self.cpp_info.libs = tools.collect_libs(self)
+        self.env_info.PATH.append(os.path.join(self.package_folder, "bin"))
