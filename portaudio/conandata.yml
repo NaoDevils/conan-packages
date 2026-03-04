@@ -5,4 +5,4 @@ sources:
 patches:
   "19.7.0":
     - patch_file: "patches/0001-Fix-audio-stream-recovery-for-Nao-V6.patch"
-      base_path: "source_subfolder"
+      base_path: "."

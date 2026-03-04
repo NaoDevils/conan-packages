@@ -1,9 +1,12 @@
-from conans import ConanFile, CMake, AutoToolsBuildEnvironment, tools
-from conan.tools.files import apply_conandata_patches, export_conandata_patches
-from conans.errors import ConanInvalidConfiguration
+from conan import ConanFile
+from conan.tools.cmake import CMake, CMakeToolchain, CMakeDeps, cmake_layout
+from conan.tools.files import apply_conandata_patches, export_conandata_patches, get, copy, rmdir, collect_libs
+from conan.tools.scm import Version
+from conan.errors import ConanInvalidConfiguration
 import os
+import platform
 
-required_conan_version = ">=1.33.0"
+required_conan_version = ">=2.0.0"
 
 
 class PortaudioConan(ConanFile):
@@ -13,9 +16,6 @@ class PortaudioConan(ConanFile):
     url = "https://github.com/bincrafters/community"
     homepage = "http://www.portaudio.com"
     license = "MIT"
-    exports = ["CMakeLists.txt"]
-    generators = ["cmake"]
-
     settings = "os", "compiler", "build_type", "arch"
     options = {
         "shared": [True, False],
@@ -32,83 +32,89 @@ class PortaudioConan(ConanFile):
         "with_jack": False
     }
 
-    _source_subfolder = "source_subfolder"
-    _build_subfolder = "build_subfolder"
-    _cmake = None
-
     def validate(self):
-        if self.settings.compiler == "apple-clang" and tools.Version(self.settings.compiler.version) < "11":
+        if self.settings.compiler == "apple-clang" and Version(self.settings.compiler.version) < "11":
             raise ConanInvalidConfiguration("This recipe does not support Apple-Clang versions < 11")
-        
+
     def export_sources(self):
         export_conandata_patches(self)
 
-    def configure(self):
-        del self.settings.compiler.libcxx
-        del self.settings.compiler.cppstd
+    def config_options(self):
         if self.settings.os == "Windows":
-            self.options.remove("fPIC")
+            del self.options.fPIC
         if self.settings.os != "Linux":
-            self.options.remove("with_system_alsa")
-            self.options.remove("with_alsa")
-            self.options.remove("with_jack")
+            del self.options.with_system_alsa
+            del self.options.with_alsa
+            del self.options.with_jack
+
+    def configure(self):
+        try:
+            del self.settings.compiler.libcxx
+        except Exception:
+            pass
+        try:
+            del self.settings.compiler.cppstd
+        except Exception:
+            pass
 
     def requirements(self):
         if self.settings.os == "Linux":
             if self.options.with_alsa:
                 self.requires("libalsa/1.1.9")
 
-    def build_requirements(self):
+    def system_requirements(self):
         if self.settings.os == "Linux":
-            if tools.os_info.with_apt:
-                installer = tools.SystemPackageTool()                
-                if self.options.get_safe("with_system_alsa", False):
-                    installer.install("libasound2-dev") 
-                if self.options.with_jack:
-                    installer.install("libjack-dev")
-            elif tools.os_info.with_yum:
-                installer = tools.SystemPackageTool()
-                if self.options.get_safe("with_system_alsa", False):
-                    installer.install("alsa-lib-devel")
-                if self.settings.arch == "x86" and tools.detected_architecture() == "x86_64":
-                    installer.install("glibmm24.i686")
-                    installer.install("glibc-devel.i686")
-                if self.options.with_jack:
-                    installer.install("jack-audio-connection-kit-devel")
+            apt_packages = []
+            yum_packages = []
+            if self.options.get_safe("with_system_alsa", False):
+                apt_packages.append("libasound2-dev")
+                yum_packages.append("alsa-lib-devel")
+            if self.options.get_safe("with_jack", False):
+                apt_packages.append("libjack-dev")
+                yum_packages.append("jack-audio-connection-kit-devel")
+            if self.settings.arch == "x86" and platform.machine() == "x86_64":
+                yum_packages.extend(["glibmm24.i686", "glibc-devel.i686"])
+            if apt_packages:
+                from conan.tools.system.package_manager import Apt
+                Apt(self).install(apt_packages)
+            if yum_packages:
+                from conan.tools.system.package_manager import Yum
+                Yum(self).install(yum_packages)
 
     def source(self):
-        tools.get(**self.conan_data["sources"][self.version], strip_root=True, destination=self._source_subfolder)
+        get(self, **self.conan_data["sources"][self.version], strip_root=True)
 
-    def _configure_cmake(self):
-        if not self._cmake:
-            self._cmake = CMake(self)
-            self._cmake.definitions["PA_BUILD_STATIC"] = not self.options.shared
-            self._cmake.definitions["PA_BUILD_SHARED"] = self.options.shared
-            self._cmake.definitions["PA_USE_JACK"] = self.options.get_safe("with_jack", False)
-            # with_system_alsa=True just makes portaudio use the Linux distro's alsa
-            # as a workaround to the fact that conancenter's alsa does not work,
-            # at least some of the time (no devices detected by portaudio)
-            self._cmake.definitions["PA_USE_ALSA"] = self.options.get_safe("with_alsa", False) or self.options.get_safe("with_system_alsa", False)
-            
-            self._cmake.configure()
-        return self._cmake
+    def layout(self):
+        cmake_layout(self)
+
+    def generate(self):
+        tc = CMakeToolchain(self)
+        tc.variables["PA_BUILD_STATIC"] = not self.options.shared
+        tc.variables["PA_BUILD_SHARED"] = self.options.shared
+        tc.variables["PA_USE_JACK"] = self.options.get_safe("with_jack", False)
+        # with_system_alsa=True just makes portaudio use the Linux distro's alsa
+        # as a workaround to the fact that conancenter's alsa does not work,
+        # at least some of the time (no devices detected by portaudio)
+        tc.variables["PA_USE_ALSA"] = self.options.get_safe("with_alsa", False) or self.options.get_safe("with_system_alsa", False)
+        tc.generate()
+        deps = CMakeDeps(self)
+        deps.generate()
 
     def build(self):
         apply_conandata_patches(self)
-        cmake = self._configure_cmake()
+        cmake = CMake(self)
+        cmake.configure()
         cmake.build()
 
     def package(self):
-        self.copy(pattern="LICENSE*", dst="licenses", src=self._source_subfolder)
-        cmake = self._configure_cmake()
+        copy(self, "LICENSE*", src=self.source_folder, dst=os.path.join(self.package_folder, "licenses"))
+        cmake = CMake(self)
         cmake.install()
-        tools.rmdir(os.path.join(self.package_folder, "share"))
-        # tools.rmdir(os.path.join(self.package_folder, "lib", "cmake"))
-        # tools.rmdir(os.path.join(self.package_folder, "lib", "pkgconfig"))
+        rmdir(self, os.path.join(self.package_folder, "share"))
 
     def package_info(self):
         # TODO: Add components with > 19.7, because the next release will most likely have major changes for their CMake setup
-        self.cpp_info.libs = tools.collect_libs(self)
+        self.cpp_info.libs = collect_libs(self)
 
         if self.settings.os == "Macos":
             self.cpp_info.frameworks.extend(["CoreAudio", "AudioToolbox", "AudioUnit", "CoreServices", "Carbon"])
@@ -118,7 +124,7 @@ class PortaudioConan(ConanFile):
 
         if self.settings.os == "Linux" and not self.options.shared:
             self.cpp_info.system_libs.extend(["m", "pthread"])
-            if(self.options.get_safe("with_system_alsa", False)):
+            if self.options.get_safe("with_system_alsa", False):
                 self.cpp_info.system_libs.append("asound")
-            if self.options.with_jack:
+            if self.options.get_safe("with_jack", False):
                 self.cpp_info.system_libs.append("jack")
