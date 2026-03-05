@@ -1,0 +1,25 @@
+--- a/onnxruntime/core/session/utils.cc
++++ b/onnxruntime/core/session/utils.cc
+@@ -6,6 +6,7 @@
+ #include <memory>
+ #include <utility>
+ 
++#include "core/common/path_string.h"
+ #include "core/framework/error_code_helper.h"
+ #include "core/framework/execution_provider.h"
+ #include "core/framework/provider_options.h"
+@@ -415,7 +416,13 @@ Status LoadPluginOrProviderBridge(const std::string& registration_name,
+                                                             true,
+                                                             ProviderLibraryPathType::Absolute);
+   bool is_provider_bridge = provider_library->Load() == Status::OK();  // library has GetProvider
+-  LOGS_DEFAULT(INFO) << "Loading EP library: " << library_path
++  std::string library_path_log;
++#ifdef _WIN32
++  library_path_log = onnxruntime::ToUTF8String(std::wstring(library_path));
++#else
++  library_path_log = std::string(library_path);
++#endif
++  LOGS_DEFAULT(INFO) << "Loading EP library: " << library_path_log
+                      << (is_provider_bridge ? " as a provider bridge" : " as a plugin");
+ 
+   // create EpLibraryPlugin to ensure CreateEpFactories and ReleaseEpFactory are available

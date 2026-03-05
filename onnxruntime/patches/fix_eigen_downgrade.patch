@@ -1,0 +1,39 @@
+--- a/onnxruntime/core/providers/cpu/math/element_wise_ops.cc
++++ b/onnxruntime/core/providers/cpu/math/element_wise_ops.cc
+@@ -813,7 +813,17 @@ Status Min_6<float>::Compute(OpKernelContext* ctx) const {
+   for (int index = 1; index < inputCount; index++) {
+     auto& data_n = *ctx->Input<Tensor>(index);
+     ORT_ENFORCE(data_n.Shape() == shape, "All inputs must have the same shape");
+-    min = min.array().template min<Eigen::PropagateNaN>(EigenMap<float>(data_n).array());
++
++    const auto a = min.array();
++    const auto b = EigenMap<float>(data_n).array();    
++#if EIGEN_VERSION_AT_LEAST(5, 0, 0)
++    min = a.template min<Eigen::PropagateNaN>(b);
++#else
++    const auto m = a.min(b);
++    // NaN test: (x != x) is true iff x is NaN (for IEEE floats)
++    const auto nan_mask = (a != a) || (b != b);
++    min = nan_mask.select(std::numeric_limits<float>::quiet_NaN(), m);
++#endif
+   }
+ 
+   return Status::OK();
+@@ -940,7 +950,16 @@ Status Max_6<float>::Compute(OpKernelContext* ctx) const {
+   for (int index = 1; index < inputCount; index++) {
+     auto& data_n = *ctx->Input<Tensor>(index);
+     ORT_ENFORCE(data_n.Shape() == shape, "All inputs must have the same shape");
+-    max = max.array().template max<Eigen::PropagateNaN>(EigenMap<float>(data_n).array());
++
++    const auto a = max.array();
++    const auto b = EigenMap<float>(data_n).array();
++#if EIGEN_VERSION_AT_LEAST(5, 0, 0)
++    max = a.template max<Eigen::PropagateNaN>(b);
++#else
++    const auto m = a.max(b);
++    const auto nan_mask = (a != a) || (b != b);
++    max = nan_mask.select(std::numeric_limits<float>::quiet_NaN(), m);
++#endif
+   }
+ 
+   return Status::OK();
