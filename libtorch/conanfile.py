@@ -1,10 +1,15 @@
-from conans import ConanFile, CMake, tools
-from conans.errors import ConanInvalidConfiguration
+from conan import ConanFile
+from conan.tools.cmake import CMake, CMakeToolchain, CMakeDeps, cmake_layout
+from conan.tools.files import get, copy, rm, rmdir, save, apply_conandata_patches, export_conandata_patches
+from conan.tools.build import check_min_cppstd
+from conan.tools.apple import is_apple_os
+from conan.tools.scm import Version
+from conan.errors import ConanInvalidConfiguration
 import glob
 import os
 import textwrap
 
-required_conan_version = ">=1.43.0"
+required_conan_version = ">=1.51.0"
 
 
 class LibtorchConan(ConanFile):
@@ -106,21 +111,14 @@ class LibtorchConan(ConanFile):
     }
 
     short_paths = True
-    generators = "cmake", "cmake_find_package", "cmake_find_package_multi"
-    _cmake = None
 
     @property
     def _source_subfolder(self):
         return "source_subfolder"
 
-    @property
-    def _build_subfolder(self):
-        return "build_subfolder"
-
     def export_sources(self):
-        self.copy("CMakeLists.txt")
-        for patch in self.conan_data.get("patches", {}).get(self.version, []):
-            self.copy(patch["patch_file"])
+        copy(self, "CMakeLists.txt", src=self.recipe_folder, dst=self.export_sources_folder)
+        export_conandata_patches(self)
 
     def config_options(self):
         # Change default options for several OS
@@ -147,12 +145,14 @@ class LibtorchConan(ConanFile):
 
     def configure(self):
         if self.options.shared:
-            del self.options.fPIC
+            # fPIC may already be deleted on Windows
+            self.options.rm_safe("fPIC")
         if not self.options.with_cuda:
             del self.options.with_cudnn
             del self.options.with_nvrtc
             del self.options.with_tensorrt
-            del self.options.with_kineto
+            # with_kineto may already be deleted by config_options() on Windows
+            self.options.rm_safe("with_kineto")
         if not (self.options.with_cuda or self.options.with_rocm):
             del self.options.with_nccl
         if not self.options.with_vulkan:
@@ -161,9 +161,10 @@ class LibtorchConan(ConanFile):
         if not self.options.with_fbgemm:
             del self.options.fakelowp
         if not self.options.distributed:
-            del self.options.with_mpi
+            # with_mpi and with_tensorpipe may already be deleted by config_options() on Windows
+            self.options.rm_safe("with_mpi")
             del self.options.with_gloo
-            del self.options.with_tensorpipe
+            self.options.rm_safe("with_tensorpipe")
 
         # numa static can't be linked into shared libs.
         # Because Caffe2_detectron_ops* libs are always shared, we have to force
@@ -187,11 +188,11 @@ class LibtorchConan(ConanFile):
         if self.options.aten_parallel_backend == "tbb":
             self.requires("tbb/2020.3")
         if self.options.with_cuda:
-            self.output.warn("cuda recipe not yet available in CCI, assuming that NVIDIA CUDA SDK is installed on your system")
+            self.output.warning("cuda recipe not yet available in CCI, assuming that NVIDIA CUDA SDK is installed on your system")
         if self.options.get_safe("with_cudnn"):
-            self.output.warn("cudnn recipe not yet available in CCI, assuming that NVIDIA CuDNN is installed on your system")
+            self.output.warning("cudnn recipe not yet available in CCI, assuming that NVIDIA CuDNN is installed on your system")
         if self.options.get_safe("with_tensorrt"):
-            self.output.warn("tensorrt recipe not yet available in CCI, assuming that NVIDIA TensorRT SDK is installed on your system")
+            self.output.warning("tensorrt recipe not yet available in CCI, assuming that NVIDIA TensorRT SDK is installed on your system")
         if self.options.get_safe("with_kineto"):
             raise ConanInvalidConfiguration("kineto recipe not yet available in CCI")
         if self.options.with_rocm:
@@ -251,21 +252,21 @@ class LibtorchConan(ConanFile):
 
     @property
     def _depends_on_sleef(self):
-        return self.settings.compiler != "Visual Studio" and self.settings.os not in ["Android", "iOS"]
+        return self.settings.compiler not in ["Visual Studio", "msvc"] and self.settings.os not in ["Android", "iOS"]
 
     def validate(self):
         if self.settings.compiler.get_safe("cppstd"):
-            tools.check_min_cppstd(self, 14)
+            check_min_cppstd(self, 14)
         if self.options.with_cuda and self.options.with_rocm:
             raise ConanInvalidConfiguration("libtorch doesn't yet support simultaneously building with CUDA and ROCm")
         if self.options.with_ffmpeg and not self.options.with_opencv:
             raise ConanInvalidConfiguration("libtorch video support with ffmpeg also requires opencv")
-        if self.options.blas == "veclib" and not tools.is_apple_os(self.settings.os):
+        if self.options.blas == "veclib" and not is_apple_os(self):
             raise ConanInvalidConfiguration("veclib only available on Apple family OS")
         if self.settings.os == "Linux" and self.settings.compiler == "clang" and self.settings.compiler.libcxx == "libc++":
             raise ConanInvalidConfiguration("clang with libc++ can't build libtorch") # TODO: try to fix that
         if self.options.distributed and self.settings.os not in ["Linux", "Windows"]:
-            self.output.warn("Distributed libtorch is not tested on {} and likely won't work".format(str(self.settings.os)))
+            self.output.warning("Distributed libtorch is not tested on {} and likely won't work".format(str(self.settings.os)))
         if self.options.get_safe("with_numa") and not self.options["libnuma"].shared:
             raise ConanInvalidConfiguration("libtorch requires libnuma shared. Set libnuma:shared=True, or disable " \
                                             "numa with libtorch:with_numa=False")
@@ -273,7 +274,7 @@ class LibtorchConan(ConanFile):
     def build_requirements(self):
         if hasattr(self, "settings_build"):
             self.build_requires("protobuf/3.17.1")
-        if self.options.with_vulkan and not self.options.vulkan_shaderc_runtime:
+        if self.options.with_vulkan and not self.options.get_safe("vulkan_shaderc_runtime", False):
             self.build_requires("shaderc/2021.1")
         # FIXME: libtorch 1.8.0 requires:
         #  - python 3.6.2+ with pyyaml, dataclasses and typing_extensions libs
@@ -283,102 +284,104 @@ class LibtorchConan(ConanFile):
         #  - python 3.8+ with pyyaml lib
         # self.build_requires("cpython/3.9.1")
 
+    def layout(self):
+        cmake_layout(self)
+
     def source(self):
-        tools.get(**self.conan_data["sources"][self.version],
-                  destination=self._source_subfolder, strip_root=True)
+        get(self, **self.conan_data["sources"][self.version],
+            destination=self._source_subfolder, strip_root=True)
 
-    def _configure_cmake(self):
-        if self._cmake:
-            return self._cmake
-        self._cmake = CMake(self)
-        self._cmake.definitions["ATEN_NO_TEST"] = True
-        self._cmake.definitions["BUILD_BINARY"] = self.options.utilities
-        self._cmake.definitions["BUILD_DOCS"] = False
-        self._cmake.definitions["BUILD_CUSTOM_PROTOBUF"] = False
-        self._cmake.definitions["BUILD_PYTHON"] = False
-        self._cmake.definitions["BUILD_CAFFE2"] = True
-        self._cmake.definitions["BUILD_CAFFE2_OPS"] = True
-        self._cmake.definitions["BUILD_CAFFE2_MOBILE"] = False
-        self._cmake.definitions["CAFFE2_LINK_LOCAL_PROTOBUF"] = False
-        self._cmake.definitions["CAFFE2_USE_MSVC_STATIC_RUNTIME"] = self.settings.compiler.get_safe("runtime") in ["MT", "MTd", "static"]
-        self._cmake.definitions["BUILD_TEST"] = False
-        self._cmake.definitions["BUILD_STATIC_RUNTIME_BENCHMARK"] = False
-        self._cmake.definitions["BUILD_MOBILE_BENCHMARKS"] = False
-        self._cmake.definitions["BUILD_MOBILE_TEST"] = False
-        self._cmake.definitions["BUILD_JNI"] = False
-        self._cmake.definitions["BUILD_MOBILE_AUTOGRAD"] = False
-        self._cmake.definitions["INSTALL_TEST"] = False
-        self._cmake.definitions["USE_CPP_CODE_COVERAGE"] = False
-        self._cmake.definitions["COLORIZE_OUTPUT"] = True
-        self._cmake.definitions["USE_ASAN"] = False
-        self._cmake.definitions["USE_TSAN"] = False
-        self._cmake.definitions["USE_CUDA"] = self.options.with_cuda
-        self._cmake.definitions["USE_ROCM"] = self.options.with_rocm
-        self._cmake.definitions["CAFFE2_STATIC_LINK_CUDA"] = False
-        self._cmake.definitions["USE_CUDNN"] = self.options.get_safe("with_cudnn", False)
-        self._cmake.definitions["USE_STATIC_CUDNN"] = False
-        self._cmake.definitions["USE_FBGEMM"] = self.options.with_fbgemm
-        self._cmake.definitions["USE_KINETO"] = self.options.get_safe("with_kineto", False)
-        self._cmake.definitions["USE_FAKELOWP"] = self.options.get_safe("fakelowp", False)
-        self._cmake.definitions["USE_FFMPEG"] = self.options.with_ffmpeg
-        self._cmake.definitions["USE_GFLAGS"] = self.options.with_gflags
-        self._cmake.definitions["USE_GLOG"] = self.options.with_glog
-        self._cmake.definitions["USE_LEVELDB"] = self.options.with_leveldb
-        self._cmake.definitions["USE_LITE_PROTO"] = False
-        self._cmake.definitions["USE_LMDB"] = self.options.with_lmdb
-        self._cmake.definitions["USE_METAL"] = self.options.get_safe("with_metal", False)
-        self._cmake.definitions["USE_NATIVE_ARCH"] = False
-        self._cmake.definitions["USE_NCCL"] = self.options.get_safe("with_nccl", False)
-        self._cmake.definitions["USE_STATIC_NCCL"] = False
-        self._cmake.definitions["USE_SYSTEM_NCCL"] = False # technically we could create a recipe for nccl with 0 packages (because it requires CUDA at build time)
-        self._cmake.definitions["USE_NNAPI"] = self.options.get_safe("with_nnapi", False)
-        self._cmake.definitions["USE_NNPACK"] = self.options.get_safe("with_nnpack", False)
-        self._cmake.definitions["USE_NUMA"] = self.options.get_safe("with_numa", False)
-        self._cmake.definitions["USE_NVRTC"] = self.options.get_safe("with_nvrtc", False)
-        self._cmake.definitions["USE_NUMPY"] = False
-        self._cmake.definitions["USE_OBSERVERS"] = self.options.observers
-        self._cmake.definitions["USE_OPENCL"] = self.options.with_opencl
-        self._cmake.definitions["USE_OPENCV"] = self.options.with_opencv
-        self._cmake.definitions["USE_OPENMP"] = self.options.aten_parallel_backend == "openmp"
-        self._cmake.definitions["USE_PROF"] = self.options.profiling
-        self._cmake.definitions["USE_QNNPACK"] = False                                                # QNNPACK is now integrated into libtorch and official repo
-        self._cmake.definitions["USE_PYTORCH_QNNPACK"] = self.options.get_safe("with_qnnpack", False) # is archived, so prefer to use vendored QNNPACK
-        self._cmake.definitions["USE_REDIS"] = self.options.with_redis
-        self._cmake.definitions["USE_ROCKSDB"] = self.options.with_rocksdb
-        self._cmake.definitions["USE_SNPE"] = self.options.get_safe("with_snpe", False)
-        self._cmake.definitions["USE_SYSTEM_EIGEN_INSTALL"] = True
-        self._cmake.definitions["USE_TENSORRT"] = self.options.get_safe("with_tensorrt", False)
-        self._cmake.definitions["USE_VULKAN"] = self.options.with_vulkan
-        self._cmake.definitions["USE_VULKAN_WRAPPER"] = False
-        self._cmake.definitions["USE_VULKAN_SHADERC_RUNTIME"] = self.options.get_safe("vulkan_shaderc_runtime", False)
-        self._cmake.definitions["USE_VULKAN_RELAXED_PRECISION"] = self.options.get_safe("vulkan_relaxed_precision", False)
-        self._cmake.definitions["USE_XNNPACK"] = self.options.with_xnnpack
-        self._cmake.definitions["USE_ZMQ"] = self.options.with_zmq
-        self._cmake.definitions["USE_ZSTD"] = self.options.with_zstd
-        self._cmake.definitions["USE_MKLDNN"] = self.options.with_mkldnn
-        self._cmake.definitions["USE_MKLDNN_CBLAS"] = False # This option has no logic and is useless in libtorch actually
-        self._cmake.definitions["USE_DISTRIBUTED"] = self.options.distributed
-        self._cmake.definitions["USE_MPI"] = self.options.get_safe("with_mpi", False)
-        self._cmake.definitions["USE_GLOO"] = self.options.get_safe("with_gloo", False)
-        self._cmake.definitions["USE_TENSORPIPE"] = self.options.get_safe("with_tensorpipe", False)
-        self._cmake.definitions["USE_TBB"] = self.options.aten_parallel_backend == "tbb"
-        self._cmake.definitions["ONNX_ML"] = True
-        self._cmake.definitions["HAVE_SOVERSION"] = True
-        self._cmake.definitions["USE_SYSTEM_LIBS"] = True
+    def generate(self):
+        tc = CMakeToolchain(self)
+        tc.variables["ATEN_NO_TEST"] = True
+        tc.variables["BUILD_BINARY"] = self.options.utilities
+        tc.variables["BUILD_DOCS"] = False
+        tc.variables["BUILD_CUSTOM_PROTOBUF"] = False
+        tc.variables["BUILD_PYTHON"] = False
+        tc.variables["BUILD_CAFFE2"] = True
+        tc.variables["BUILD_CAFFE2_OPS"] = True
+        tc.variables["BUILD_CAFFE2_MOBILE"] = False
+        tc.variables["CAFFE2_LINK_LOCAL_PROTOBUF"] = False
+        tc.variables["CAFFE2_USE_MSVC_STATIC_RUNTIME"] = self.settings.compiler.get_safe("runtime") in ["MT", "MTd", "static"]
+        tc.variables["BUILD_TEST"] = False
+        tc.variables["BUILD_STATIC_RUNTIME_BENCHMARK"] = False
+        tc.variables["BUILD_MOBILE_BENCHMARKS"] = False
+        tc.variables["BUILD_MOBILE_TEST"] = False
+        tc.variables["BUILD_JNI"] = False
+        tc.variables["BUILD_MOBILE_AUTOGRAD"] = False
+        tc.variables["INSTALL_TEST"] = False
+        tc.variables["USE_CPP_CODE_COVERAGE"] = False
+        tc.variables["COLORIZE_OUTPUT"] = True
+        tc.variables["USE_ASAN"] = False
+        tc.variables["USE_TSAN"] = False
+        tc.variables["USE_CUDA"] = self.options.with_cuda
+        tc.variables["USE_ROCM"] = self.options.with_rocm
+        tc.variables["CAFFE2_STATIC_LINK_CUDA"] = False
+        tc.variables["USE_CUDNN"] = self.options.get_safe("with_cudnn", False)
+        tc.variables["USE_STATIC_CUDNN"] = False
+        tc.variables["USE_FBGEMM"] = self.options.with_fbgemm
+        tc.variables["USE_KINETO"] = self.options.get_safe("with_kineto", False)
+        tc.variables["USE_FAKELOWP"] = self.options.get_safe("fakelowp", False)
+        tc.variables["USE_FFMPEG"] = self.options.with_ffmpeg
+        tc.variables["USE_GFLAGS"] = self.options.with_gflags
+        tc.variables["USE_GLOG"] = self.options.with_glog
+        tc.variables["USE_LEVELDB"] = self.options.with_leveldb
+        tc.variables["USE_LITE_PROTO"] = False
+        tc.variables["USE_LMDB"] = self.options.with_lmdb
+        tc.variables["USE_METAL"] = self.options.get_safe("with_metal", False)
+        tc.variables["USE_NATIVE_ARCH"] = False
+        tc.variables["USE_NCCL"] = self.options.get_safe("with_nccl", False)
+        tc.variables["USE_STATIC_NCCL"] = False
+        tc.variables["USE_SYSTEM_NCCL"] = False # technically we could create a recipe for nccl with 0 packages (because it requires CUDA at build time)
+        tc.variables["USE_NNAPI"] = self.options.get_safe("with_nnapi", False)
+        tc.variables["USE_NNPACK"] = self.options.get_safe("with_nnpack", False)
+        tc.variables["USE_NUMA"] = self.options.get_safe("with_numa", False)
+        tc.variables["USE_NVRTC"] = self.options.get_safe("with_nvrtc", False)
+        tc.variables["USE_NUMPY"] = False
+        tc.variables["USE_OBSERVERS"] = self.options.observers
+        tc.variables["USE_OPENCL"] = self.options.with_opencl
+        tc.variables["USE_OPENCV"] = self.options.with_opencv
+        tc.variables["USE_OPENMP"] = self.options.aten_parallel_backend == "openmp"
+        tc.variables["USE_PROF"] = self.options.profiling
+        tc.variables["USE_QNNPACK"] = False                                                # QNNPACK is now integrated into libtorch and official repo
+        tc.variables["USE_PYTORCH_QNNPACK"] = self.options.get_safe("with_qnnpack", False) # is archived, so prefer to use vendored QNNPACK
+        tc.variables["USE_REDIS"] = self.options.with_redis
+        tc.variables["USE_ROCKSDB"] = self.options.with_rocksdb
+        tc.variables["USE_SNPE"] = self.options.get_safe("with_snpe", False)
+        tc.variables["USE_SYSTEM_EIGEN_INSTALL"] = True
+        tc.variables["USE_TENSORRT"] = self.options.get_safe("with_tensorrt", False)
+        tc.variables["USE_VULKAN"] = self.options.with_vulkan
+        tc.variables["USE_VULKAN_WRAPPER"] = False
+        tc.variables["USE_VULKAN_SHADERC_RUNTIME"] = self.options.get_safe("vulkan_shaderc_runtime", False)
+        tc.variables["USE_VULKAN_RELAXED_PRECISION"] = self.options.get_safe("vulkan_relaxed_precision", False)
+        tc.variables["USE_XNNPACK"] = self.options.with_xnnpack
+        tc.variables["USE_ZMQ"] = self.options.with_zmq
+        tc.variables["USE_ZSTD"] = self.options.with_zstd
+        tc.variables["USE_MKLDNN"] = self.options.with_mkldnn
+        tc.variables["USE_MKLDNN_CBLAS"] = False # This option has no logic and is useless in libtorch actually
+        tc.variables["USE_DISTRIBUTED"] = self.options.distributed
+        tc.variables["USE_MPI"] = self.options.get_safe("with_mpi", False)
+        tc.variables["USE_GLOO"] = self.options.get_safe("with_gloo", False)
+        tc.variables["USE_TENSORPIPE"] = self.options.get_safe("with_tensorpipe", False)
+        tc.variables["USE_TBB"] = self.options.aten_parallel_backend == "tbb"
+        tc.variables["ONNX_ML"] = True
+        tc.variables["HAVE_SOVERSION"] = True
+        tc.variables["USE_SYSTEM_LIBS"] = True
 
-        self._cmake.definitions["USE_LAPACK"] = False # TODO: add an option
+        tc.variables["USE_LAPACK"] = False # TODO: add an option
 
-        self._cmake.definitions["BUILDING_WITH_TORCH_LIBS"] = True
-        self._cmake.definitions["BLAS"] = self._blas_cmake_option_value
+        tc.variables["BUILDING_WITH_TORCH_LIBS"] = True
+        tc.variables["BLAS"] = self._blas_cmake_option_value
 
-        self._cmake.definitions["MSVC_Z7_OVERRIDE"] = False
+        tc.variables["MSVC_Z7_OVERRIDE"] = False
 
         # Custom variables for our CMake wrapper
-        self._cmake.definitions["CONAN_LIBTORCH_USE_SLEEF"] = self._depends_on_sleef
-        self._cmake.definitions["CONAN_LIBTORCH_USE_PTHREADPOOL"] = self._use_nnpack_family
+        tc.variables["CONAN_LIBTORCH_USE_SLEEF"] = self._depends_on_sleef
+        tc.variables["CONAN_LIBTORCH_USE_PTHREADPOOL"] = self._use_nnpack_family
 
-        self._cmake.configure(build_folder=self._build_subfolder)
-        return self._cmake
+        tc.generate()
+        deps = CMakeDeps(self)
+        deps.generate()
 
     @property
     def _blas_cmake_option_value(self):
@@ -398,27 +401,28 @@ class LibtorchConan(ConanFile):
 
     def build(self):
         if self.options.get_safe("with_snpe"):
-            self.output.warn("with_snpe is enabled. Pay attention that you should have properly set SNPE_LOCATION and SNPE_HEADERS CMake variables")
-        for patch in self.conan_data.get("patches", {}).get(self.version, []):
-            tools.patch(**patch)
+            self.output.warning("with_snpe is enabled. Pay attention that you should have properly set SNPE_LOCATION and SNPE_HEADERS CMake variables")
+        apply_conandata_patches(self)
         # conflict with macros.h generated at build time
-        os.remove(os.path.join(self.build_folder, self._source_subfolder, "caffe2", "core", "macros.h"))
-        cmake = self._configure_cmake()
+        os.remove(os.path.join(self.source_folder, self._source_subfolder, "caffe2", "core", "macros.h"))
+        cmake = CMake(self)
+        cmake.configure()
         cmake.build()
 
     def package(self):
-        self.copy("LICENSE", dst="licenses", src=self._source_subfolder)
-        cmake = self._configure_cmake()
+        copy(self, "LICENSE",
+             src=os.path.join(self.source_folder, self._source_subfolder),
+             dst=os.path.join(self.package_folder, "licenses"))
+        cmake = CMake(self)
         cmake.install()
         # TODO: Keep share/Aten/Declarations.yml?
-        tools.rmdir(os.path.join(self.package_folder, "share"))
-        tools.remove_files_by_mask(os.path.join(self.package_folder, "bin"), "*.pdb")
+        rmdir(self, os.path.join(self.package_folder, "share"))
+        rm(self, "*.pdb", os.path.join(self.package_folder, "bin"))
         self._create_cmake_module_variables(
             os.path.join(self.package_folder, self._module_file_rel_path)
         )
 
-    @staticmethod
-    def _create_cmake_module_variables(module_file):
+    def _create_cmake_module_variables(self, module_file):
         content = textwrap.dedent("""\
             if(DEFINED Torch_FOUND)
                 set(TORCH_FOUND ${Torch_FOUND})
@@ -430,7 +434,7 @@ class LibtorchConan(ConanFile):
                 set(TORCH_LIBRARIES "Torch::Torch")
             endif()
         """)
-        tools.save(module_file, content)
+        save(self, module_file, content)
 
     @property
     def _module_subfolder(self):
@@ -459,7 +463,7 @@ class LibtorchConan(ConanFile):
                 if self.settings.os == "Macos":
                     lib_fullpath = os.path.join(lib_folder, "lib{}.a".format(libname))
                     whole_archive = "-Wl,-force_load,{}".format(lib_fullpath)
-                elif self.settings.compiler == "Visual Studio":
+                elif self.settings.compiler in ["Visual Studio", "msvc"]:
                     lib_fullpath = os.path.join(lib_folder, "{}".format(libname))
                     whole_archive = "-WHOLEARCHIVE:{}".format(lib_fullpath)
                 else:
