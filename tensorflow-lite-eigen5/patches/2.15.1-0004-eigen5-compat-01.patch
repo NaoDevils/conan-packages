@@ -1,0 +1,26 @@
+diff --git a/tensorflow/lite/kernels/internal/optimized/multithreaded_conv.h b/tensorflow/lite/kernels/internal/optimized/multithreaded_conv.h
+index 6bb1aaa..773660c 100644
+--- a/tensorflow/lite/kernels/internal/optimized/multithreaded_conv.h
++++ b/tensorflow/lite/kernels/internal/optimized/multithreaded_conv.h
+@@ -122,10 +122,17 @@ class EigenTensorConvFunctor {
+     } else {
+       EigenTensor output(output_data, input_batches, output_height,
+                          output_width, filter_count);
+-      ConstEigenTensor input(input_data, input_batches, input_height,
+-                             input_width, input_depth);
+-      ConstEigenTensor filter(filter_data, filter_height, filter_width,
+-                              input_depth, filter_count);
++      ConstEigenTensor input_map(input_data, input_batches, input_height,
++                                 input_width, input_depth);
++      ConstEigenTensor filter_map(filter_data, filter_height, filter_width,
++                                  input_depth, filter_count);
++
++      // Eigen v5 is stricter about TensorRef mutability inside SpatialConvolution.
++      // Materialize const maps into concrete tensor temporaries before calling
++      // SpatialConvolution.
++      Eigen::Tensor<T, 4, Eigen::RowMajor, Eigen::DenseIndex> input(input_map);
++      Eigen::Tensor<T, 4, Eigen::RowMajor, Eigen::DenseIndex> filter(filter_map);
++    
+       output.device(device) =
+           Eigen::SpatialConvolution(input, filter, stride_cols, stride_rows,
+                                     RuntimePadding2EigenPadding(padding));

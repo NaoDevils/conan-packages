@@ -1,0 +1,15 @@
+sources:
+  "2.15.1":
+    url: "https://github.com/tensorflow/tensorflow/archive/refs/tags/v2.15.1.tar.gz"
+    sha256: "f36416d831f06fe866e149c7cd752da410a11178b01ff5620e9f265511ed57cf"
+patches:
+  "2.15.1":
+    - patch_file: "patches/2.15.0-0001-disable-fetch-content.patch"
+      patch_description: "Fail if the CMake build script tries to fetch external dependencies"
+      patch_type: "conan"
+    - patch_file: "patches/2.15.1-0003-use-cci-dependencies.patch"
+      patch_description: "Dependency compatibility: Patch CMakeLists.txt, updating package names, target names, etc"
+      patch_type: "conan"
+    - patch_file: "patches/2.15.1-0004-eigen5-compat-01.patch"
+      patch_description: "Eigen v5 compatibility"
+      patch_type: "conan"
