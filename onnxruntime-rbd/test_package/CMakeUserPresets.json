@@ -5,6 +5,7 @@
     },
     "include": [
         "build/msvc-194-x86_64-17-release/generators/CMakePresets.json",
-        "build/msvc-194-x86_64-20-release/generators/CMakePresets.json"
+        "build/msvc-194-x86_64-20-release/generators/CMakePresets.json",
+        "build/msvc-194-x86_64-20-debug/generators/CMakePresets.json"
     ]
 }

@@ -1,7 +1,8 @@
 sources:
   "1.23.2":
-    url: "https://github.com/microsoft/onnxruntime/archive/refs/tags/v1.23.2.tar.gz"
+    #url: "https://github.com/microsoft/onnxruntime/archive/refs/tags/v1.23.2.tar.gz"
     #url: "file:C:/Users/tk/.conan2/src_tmp/onnxruntime-1.23.2.tar.gz"
+    url: "file:/mnt/c/Users/tk/.conan2/src_tmp/onnxruntime-1.23.2.tar.gz"
     sha256: "99bcf964ce4e869d823c99b2294562a9050cbfa8e76ec81c8683cb3c7e19c2b4"
 patches:
   "1.23.2":
