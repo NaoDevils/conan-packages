@@ -12,7 +12,7 @@ required_conan_version = ">=2"
 
 
 class OnnxRuntimeConan(ConanFile):
-    name = "onnxruntime"
+    name = "onnxruntime-rbd"
     description = "ONNX Runtime: cross-platform, high performance ML inferencing and training accelerator"
     url = "https://github.com/conan-io/conan-center-index"
     license = "MIT"
@@ -62,7 +62,6 @@ class OnnxRuntimeConan(ConanFile):
         self.requires("boost/[>=1.83.0 <1.90.0]", headers=True, libs=False)  # for mp11, header only, no need for libraries
         self.requires("safeint/3.0.28")
         self.requires("nlohmann_json/[>=3.11.3 <3.12]")
-        #self.requires("eigen/3.4.0")
         self.requires("eigen/[>=5.0.1 <6]")
         self.requires("ms-gsl/4.0.0")
         if self.settings.os != "Windows":
