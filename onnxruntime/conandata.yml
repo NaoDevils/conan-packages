@@ -8,7 +8,6 @@ patches:
     - patch_file: "patches/fix-cutlass-cuda-provider.patch"
     - patch_file: "patches/cmake-cxx-standard.patch"
     - patch_file: "patches/fix_cppstd20.patch"
-#    - patch_file: "patches/fix_eigen_downgrade.patch"
 
 # ONNX versions are based on the minor version used at
 # https://github.com/microsoft/onnxruntime/tree/main/cmake/external
