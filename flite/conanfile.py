@@ -1,8 +1,13 @@
-from conans import ConanFile, CMake, AutoToolsBuildEnvironment, MSBuild, tools
-from conans.errors import ConanInvalidConfiguration
+from conan import ConanFile
+from conan.tools.gnu import Autotools, AutotoolsToolchain
+from conan.tools.microsoft import MSBuild
+from conan.tools.files import (
+    get, copy, chdir, rename, rmdir, rm, replace_in_file
+)
+from conan.tools.layout import basic_layout
 import os
 
-required_conan_version = ">=1.33.0"
+required_conan_version = ">=1.43.0"
 
 class FliteConan(ConanFile):
     name = "flite"
@@ -26,64 +31,134 @@ class FliteConan(ConanFile):
     }
 
     _source_subfolder = "source_subfolder"
-    _autotools = None
-    
+
     def build_requirements(self):
         if self.settings.os != "Windows":
-            self.build_requires("make/4.3") # Make 4.4 is currently incompatible
-        
-    def configure(self):
-       del self.settings.compiler.libcxx       
-               
+            self.build_requires("make/4.3")  # Make 4.4 is currently incompatible
+
     def config_options(self):
         if self.settings.os == "Windows":
             del self.options.fPIC
 
+    def configure(self):
+        try:
+            del self.settings.compiler.libcxx
+        except Exception:
+            pass
+
+    def layout(self):
+        basic_layout(self)
+
     def source(self):
-        tools.get(**self.conan_data["sources"][self.version], strip_root=True, destination=self._source_subfolder)
-        
-    def _configure_autotools(self):
-        if self._autotools:
-            return self._autotools
+        get(self, **self.conan_data["sources"][self.version], strip_root=True, destination=self._source_subfolder)
 
-        self._autotools = AutoToolsBuildEnvironment(self)
-        self._autotools.configure(args=["--with-audio=none"])
-        return self._autotools
+    def generate(self):
+        if self.settings.os != "Windows":
+            tc = AutotoolsToolchain(self)
+            tc.configure_args.append("--with-audio=none")
+            tc.generate()
+    def _patch_windows_toolset(self):
+        """Patch vcxproj toolset to match the detected MSVC version.
 
-    def build(self):    
+        Upstream .vcxproj files target v142 (VS2019). When building with VS2022
+        (msvc >= 193), MSBuild fails unless VS2019 build tools are installed.
+        We patch the project files to v143 so they build with VS2022 toolchain.
+
+        Note: conan.tools.files.replace_in_file() is strict and raises if the
+        pattern isn't present. Some projects use only one of the representations,
+        so we patch by loading and saving the file when a change is actually made.
+        """
+        if self.settings.compiler != "msvc":
+            return
+
+        # MSVC 19.3x/19.4x -> VS2022 toolset v143
+        try:
+            msvc_ver = int(str(self.settings.compiler.version))
+        except Exception:
+            msvc_ver = None
+
+        desired_toolset = "v143" if (msvc_ver is None or msvc_ver >= 193) else None
+        if not desired_toolset:
+            return
+
+        from conan.tools.files import load, save
+
+        sapi_dir = os.path.join(self.source_folder, self._source_subfolder, "sapi")
+        for root, _, files in os.walk(sapi_dir):
+            for fn in files:
+                if not fn.lower().endswith(".vcxproj"):
+                    continue
+                vcxproj = os.path.join(root, fn)
+                content = load(self, vcxproj)
+
+                new_content = content
+                new_content = new_content.replace(
+                    "<PlatformToolset>v142</PlatformToolset>",
+                    f"<PlatformToolset>{desired_toolset}</PlatformToolset>"
+                )
+                new_content = new_content.replace(
+                    'PlatformToolset="v142"',
+                    f'PlatformToolset="{desired_toolset}"'
+                )
+
+                if new_content != content:
+                    save(self, vcxproj, new_content)
+
+    def build(self):
         if self.settings.os == "Windows":
-          with tools.chdir(self._source_subfolder + "/sapi"):
-            msbuild = MSBuild(self)
-            msbuild.build("flite_conan.sln")
-        else:        
-          with tools.chdir(self._source_subfolder):
-            autotools = self._configure_autotools()
-            autotools.make()
-                  
+            self._patch_windows_toolset()
+            with chdir(self, os.path.join(self.source_folder, self._source_subfolder, "sapi")):
+                msbuild = MSBuild(self)
+                msbuild.build("flite_conan.sln")
+        else:
+            src = os.path.join(self.source_folder, self._source_subfolder)
+            with chdir(self, src):
+                autotools = Autotools(self)
+                # Run configure from the source folder so generated files land next to Makefile
+                autotools.configure(build_script_folder=src)
+                autotools.make()
+
     def package(self):
         if self.settings.os == "Windows":
-          with tools.chdir(self.package_folder):
-            self.copy("*.lib", dst="lib", src=self._source_subfolder, keep_path=False)
-            self.copy("*/flite*.h", dst="include/flite", src=self.source_folder, keep_path=False)
-            self.copy("*/cst_*.h", dst="include/flite", src=self.source_folder, keep_path=False)
-            tools.rename("lib/usenglish.lib", "lib/flite_usenglish.lib")
-            tools.rename("lib/cmulex.lib", "lib/flite_cmulex.lib")
+            copy(self, "*.lib",
+                 src=os.path.join(self.source_folder, self._source_subfolder),
+                 dst=os.path.join(self.package_folder, "lib"),
+                 keep_path=False)
+            copy(self, "*/flite*.h",
+                 src=self.source_folder,
+                 dst=os.path.join(self.package_folder, "include", "flite"),
+                 keep_path=False)
+            copy(self, "*/cst_*.h",
+                 src=self.source_folder,
+                 dst=os.path.join(self.package_folder, "include", "flite"),
+                 keep_path=False)
+            rename(self,
+                   os.path.join(self.package_folder, "lib", "usenglish.lib"),
+                   os.path.join(self.package_folder, "lib", "flite_usenglish.lib"))
+            rename(self,
+                   os.path.join(self.package_folder, "lib", "cmulex.lib"),
+                   os.path.join(self.package_folder, "lib", "flite_cmulex.lib"))
         else:
-          with tools.chdir(self._source_subfolder):
-              autotools = self._configure_autotools()
-              autotools.install()
-            
-          if not self.options.with_utils:
-              tools.rmdir(os.path.join(self.package_folder, "bin"))
-          
-          tools.remove_files_by_mask(os.path.join(self.package_folder, "lib"), "libflite_cmu_*.a")
-          
-        self.copy("LICENSE*", dst="licenses", src=self._source_subfolder)
-        self.copy("COPYING", dst="licenses", src=self._source_subfolder)
+            src = os.path.join(self.source_folder, self._source_subfolder)
+            with chdir(self, src):
+                autotools = Autotools(self)
+                autotools.install()
+
+            if not self.options.with_utils:
+                rmdir(self, os.path.join(self.package_folder, "bin"))
+
+            rm(self, "libflite_cmu_*.a", os.path.join(self.package_folder, "lib"))
+
+        copy(self, "LICENSE*",
+             src=os.path.join(self.source_folder, self._source_subfolder),
+             dst=os.path.join(self.package_folder, "licenses"))
+        copy(self, "COPYING",
+             src=os.path.join(self.source_folder, self._source_subfolder),
+             dst=os.path.join(self.package_folder, "licenses"))
 
     def package_info(self):
-        self.cpp_info.libs = ['flite_usenglish','flite_cmulex','flite']
-        
-        if not self.settings.os == "Windows":
-          self.cpp_info.system_libs = ['m']
- 
+        self.cpp_info.libs = ['flite_usenglish', 'flite_cmulex', 'flite']
+
+        if self.settings.os in ("Linux", "FreeBSD"):
+            # flite uses math functions (exp/log/sqrt/pow) -> libm
+            self.cpp_info.system_libs.append("m")
