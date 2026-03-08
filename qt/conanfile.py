@@ -92,7 +92,7 @@ class QtConan(ConanFile):
         "with_pcre2": True,
         "with_glib": False,
         "with_doubleconversion": True,
-        "with_freetype": True,
+        "with_freetype": False,
         "with_fontconfig": True,
         "with_icu": True,
         "with_harfbuzz": True,
