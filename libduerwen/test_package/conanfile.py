@@ -1,7 +1,6 @@
 import os
 from conan import ConanFile
 from conan.tools.cmake import CMake, cmake_layout
-from conan.tools.build import can_run
 
 
 class TestDuerwenWakeupDOA(ConanFile):
@@ -20,7 +19,6 @@ class TestDuerwenWakeupDOA(ConanFile):
         cmake.build()
 
     def test(self):
-        # Only run the executable when not cross-compiling
-        if can_run(self):
-            cmd = os.path.join(self.cpp.build.bindirs[0], "example")
-            self.run(cmd, env="conanrun")
+        cmd = os.path.join(self.cpp.build.bindirs[0], "example")
+        self.run(cmd, env="conanrun")
+        
