@@ -279,6 +279,7 @@ class ProtobufConan(ConanFile):
 
         # libprotoc
         if self.settings.os != "tvOS":
+            self.buildenv_info.append_path("PATH", os.path.join(self.package_folder, "bin")) 
             self.cpp_info.components["libprotoc"].set_property("cmake_target_name", "protobuf::libprotoc")
             self.cpp_info.components["libprotoc"].libs = [lib_prefix + "protoc" + lib_suffix]
             self.cpp_info.components["libprotoc"].requires = ["libprotobuf"]

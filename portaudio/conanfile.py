@@ -1,4 +1,5 @@
 from conan import ConanFile
+from conan.tools.build import cross_building
 from conan.tools.cmake import CMake, CMakeToolchain, CMakeDeps, cmake_layout
 from conan.tools.files import apply_conandata_patches, export_conandata_patches, get, copy, rmdir, collect_libs
 from conan.tools.scm import Version
@@ -63,23 +64,31 @@ class PortaudioConan(ConanFile):
                 self.requires("libalsa/1.1.9")
 
     def system_requirements(self):
-        if self.settings.os == "Linux":
-            apt_packages = []
-            yum_packages = []
-            if self.options.get_safe("with_system_alsa", False):
-                apt_packages.append("libasound2-dev")
-                yum_packages.append("alsa-lib-devel")
-            if self.options.get_safe("with_jack", False):
-                apt_packages.append("libjack-dev")
-                yum_packages.append("jack-audio-connection-kit-devel")
-            if self.settings.arch == "x86" and platform.machine() == "x86_64":
-                yum_packages.extend(["glibmm24.i686", "glibc-devel.i686"])
-            if apt_packages:
-                from conan.tools.system.package_manager import Apt
-                Apt(self).install(apt_packages)
-            if yum_packages:
-                from conan.tools.system.package_manager import Yum
-                Yum(self).install(yum_packages)
+        if self.settings.os != "Linux":
+            return        
+        
+        if cross_building(self):
+            self.output.info("Cross-building detected")
+            self.output.info("Skipping host system package check for libasound2-dev")
+            self.output.info("Assuming target ALSA headers/libs are provided in /sysroot")
+            return
+        
+        apt_packages = []
+        yum_packages = []
+        if self.options.get_safe("with_system_alsa", False):
+            apt_packages.append("libasound2-dev")
+            yum_packages.append("alsa-lib-devel")
+        if self.options.get_safe("with_jack", False):
+            apt_packages.append("libjack-dev")
+            yum_packages.append("jack-audio-connection-kit-devel")
+        if self.settings.arch == "x86" and platform.machine() == "x86_64":
+            yum_packages.extend(["glibmm24.i686", "glibc-devel.i686"])
+        if apt_packages:
+            from conan.tools.system.package_manager import Apt
+            Apt(self).install(apt_packages)
+        if yum_packages:
+            from conan.tools.system.package_manager import Yum
+            Yum(self).install(yum_packages)
 
     def source(self):
         get(self, **self.conan_data["sources"][self.version], strip_root=True)
