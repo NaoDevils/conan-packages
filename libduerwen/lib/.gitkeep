@@ -1,0 +1,5 @@
+# Place the prebuilt ARM binary here:
+#   libduerwen_wakeup_DOA.so
+#
+# This file is a placeholder so that the lib/ directory is tracked by Git.
+# The actual .so is not committed to version control (add it to .gitignore).
