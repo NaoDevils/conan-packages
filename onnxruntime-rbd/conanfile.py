@@ -126,6 +126,9 @@ class OnnxRuntimeConan(ConanFile):
         tc.variables["onnxruntime_USE_NEURAL_SPEED"] = False
         tc.variables["onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION"] = False
 
+        # tk 20260311 disable for cross compile to ARM
+        tc.variables["onnxruntime_ENABLE_CPUINFO"] = False
+
         # Disable a warning that gets converted to an error
         tc.preprocessor_definitions["_SILENCE_ALL_CXX23_DEPRECATION_WARNINGS"] = "1"
         tc.generate()
