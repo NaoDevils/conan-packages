@@ -57,6 +57,54 @@ class FliteConan(ConanFile):
             tc = AutotoolsToolchain(self)
             tc.configure_args.append("--with-audio=none")
             tc.generate()
+    def _patch_sln_build_type(self):
+        """Patch flite_conan.sln to accept build types beyond Debug and Release.
+
+        The upstream solution only defines Debug|x64 and Release|x64 configurations.
+        When Conan requests RelWithDebInfo or MinSizeRel, MSBuild fails with
+        MSB4126 (invalid solution configuration). We add the missing solution-level
+        entry and map each project's configuration to the nearest base config.
+        """
+        build_type = str(self.settings.build_type)
+        if build_type in ("Debug", "Release"):
+            return
+
+        base_config = "Release" if build_type in ("RelWithDebInfo", "MinSizeRel") else "Debug"
+
+        from conan.tools.files import load, save
+        import re
+
+        sln_path = os.path.join(self.source_folder, self._source_subfolder, "sapi", "flite_conan.sln")
+        if not os.path.exists(sln_path):
+            return
+
+        content = load(self, sln_path)
+
+        # 1. Add solution-level configuration entry (only if not already present)
+        new_entry = f"\t\t{build_type}|x64 = {build_type}|x64\n"
+        if new_entry not in content:
+            old = f"\t\t{base_config}|x64 = {base_config}|x64\n"
+            content = content.replace(old, old + new_entry)
+
+        # 2. Add project-level mapping entries for each GUID so MSBuild knows
+        #    which project configuration to build for the new solution config.
+        pattern = re.compile(
+            r'(\t\t\{[0-9A-Fa-f\-]+\})\.' + re.escape(base_config) + r'\|x64\.Build\.0 = ' + re.escape(base_config) + r'\|x64'
+        )
+
+        def add_mapping(m):
+            prefix = m.group(1)
+            new_active = f"\n{prefix}.{build_type}|x64.ActiveCfg = {base_config}|x64"
+            new_build  = f"\n{prefix}.{build_type}|x64.Build.0 = {base_config}|x64"
+            # Only add if not already present
+            if f"{prefix}.{build_type}|x64.ActiveCfg" in content:
+                return m.group(0)
+            return m.group(0) + new_active + new_build
+
+        content = pattern.sub(add_mapping, content)
+
+        save(self, sln_path, content)
+
     def _patch_windows_toolset(self):
         """Patch vcxproj toolset to match the detected MSVC version.
 
@@ -106,6 +154,7 @@ class FliteConan(ConanFile):
 
     def build(self):
         if self.settings.os == "Windows":
+            self._patch_sln_build_type()
             self._patch_windows_toolset()
             with chdir(self, os.path.join(self.source_folder, self._source_subfolder, "sapi")):
                 msbuild = MSBuild(self)
