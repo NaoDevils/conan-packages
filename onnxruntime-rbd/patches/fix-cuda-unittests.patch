@@ -1,0 +1,12 @@
+--- a/cmake/onnxruntime_unittests.cmake
++++ b/cmake/onnxruntime_unittests.cmake
+@@ -66,9 +66,6 @@
+       # otherwise it will impact when CUDA DLLs can be unloaded.
+       target_link_libraries(${_UT_TARGET} PRIVATE CUDA::cudart)
+     endif()
+-    if(onnxruntime_USE_CUDA AND NOT onnxruntime_CUDA_MINIMAL)
+-      target_link_libraries(${_UT_TARGET} PRIVATE cudnn_frontend)
+-    endif()
+     target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} GTest::gtest GTest::gmock ${onnxruntime_EXTERNAL_LIBRARIES})
+   endif()
+

@@ -1,15 +1,13 @@
 import os
-import sys
 
 from conan import ConanFile
 from conan.errors import ConanInvalidConfiguration
-from conan.tools.apple import is_apple_os
 from conan.tools.build import check_min_cppstd
-from conan.tools.cmake import CMake, CMakeDeps, CMakeToolchain, cmake_layout
+from conan.tools.cmake import CMake, CMakeToolchain, CMakeDeps, cmake_layout
 from conan.tools.files import apply_conandata_patches, copy, export_conandata_patches, get, rmdir, replace_in_file
+from conan.tools.build import cross_building
 
 required_conan_version = ">=2"
-
 
 class OnnxRuntimeConan(ConanFile):
     name = "onnxruntime-rbd"
@@ -25,13 +23,13 @@ class OnnxRuntimeConan(ConanFile):
         "shared": [True, False],
         "fPIC": [True, False],
         "with_xnnpack": [True, False],
-        "with_cuda": [True, False],
+        "jetson_k1": [True, False],
     }
     default_options = {
         "shared": False,
         "fPIC": True,
         "with_xnnpack": False,
-        "with_cuda": False,
+        "jetson_k1": False,
     }
     short_paths = True
 
@@ -71,8 +69,9 @@ class OnnxRuntimeConan(ConanFile):
         if self.options.with_xnnpack:
             self.requires("xnnpack/[>=cci.20241203]")
             self.requires("pthreadpool/cci.20231129")
-        if self.options.with_cuda:
-            self.requires("cutlass/3.5.0")
+        if self.options.jetson_k1:
+            self.requires("cutlass/3.5.0") 
+            self.requires("cudnn-frontend/1.15.0")
         self.requires("cpuinfo/[>=cci.20250110]")
 
     def validate(self):
@@ -86,6 +85,31 @@ class OnnxRuntimeConan(ConanFile):
             # Commented here: https://github.com/onnx/onnx/pull/7505#issuecomment-3601468150
             raise ConanInvalidConfiguration("There are link errors using 'onnx/*:shared=True',"
                                             " use '-o onnx/*:shared=False' instead.")
+        if self.options.jetson_k1:
+            if self.settings.os != "Linux":
+                raise ConanInvalidConfiguration("jetson_k1=True requires os=Linux")
+            if str(self.settings.arch) != "armv8":
+                raise ConanInvalidConfiguration("jetson_k1=True requires arch=armv8")
+
+            # If you know your K1 target is always cross/native aarch64 Linux, fail early
+            # unless the required runtime SDK roots are discoverable.
+            cuda_home = self._get_path("user.k1:cuda_home", "CUDA_HOME")
+            cudnn_home = self._get_path("user.k1:cudnn_home", "CUDNN_HOME")
+            tensorrt_home = self._get_path("user.k1:tensorrt_home", "TENSORRT_HOME")
+
+            missing = []
+            if not cuda_home:
+                missing.append("CUDA_HOME / user.k1:cuda_home")
+            if not cudnn_home:
+                missing.append("CUDNN_HOME / user.k1:cudnn_home")
+            if not tensorrt_home:
+                missing.append("TENSORRT_HOME / user.k1:tensorrt_home")
+
+            if missing:
+                raise ConanInvalidConfiguration(
+                    "jetson_k1=True requires target SDK paths to be defined: "
+                    + ", ".join(missing)
+                )
 
     def validate_build(self):
         if self.settings.os == "Windows" and self.dependencies["abseil"].options.shared:
@@ -100,6 +124,14 @@ class OnnxRuntimeConan(ConanFile):
         get(self, **self.conan_data["sources"][self.version], strip_root=True)
         self._patch_sources()
 
+    def _get_path(self, conf_name: str, env_name: str):
+        value = self.conf.get(conf_name, default=None)
+        if value is None:
+            value = os.getenv(env_name)
+        if not value:
+            return None
+        return value
+
     def generate(self):
         tc = CMakeToolchain(self)
         # disable downloading dependencies to ensure conan ones are used
@@ -109,7 +141,6 @@ class OnnxRuntimeConan(ConanFile):
         tc.variables["onnxruntime_USE_FULL_PROTOBUF"] = not self.dependencies["protobuf"].options.lite
         tc.variables["onnxruntime_USE_XNNPACK"] = self.options.with_xnnpack
 
-        tc.variables["onnxruntime_USE_CUDA"] = self.options.with_cuda
         tc.variables["onnxruntime_BUILD_UNIT_TESTS"] = False
         tc.variables["onnxruntime_DISABLE_CONTRIB_OPS"] = False
         tc.variables["onnxruntime_USE_FLASH_ATTENTION"] = False
@@ -126,8 +157,30 @@ class OnnxRuntimeConan(ConanFile):
         tc.variables["onnxruntime_USE_NEURAL_SPEED"] = False
         tc.variables["onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION"] = False
 
-        # tk 20260311 disable for cross compile to ARM
-        tc.variables["onnxruntime_ENABLE_CPUINFO"] = False
+        if self.options.jetson_k1:
+            tc.cache_variables["CMAKE_CUDA_COMPILER"] = "/usr/local/cuda/bin/nvcc"
+            tc.cache_variables["CMAKE_CUDA_HOST_COMPILER"] = "/opt/cross/aarch64-linux-gnu-g++"
+            tc.cache_variables["CMAKE_TRY_COMPILE_TARGET_TYPE"] = "STATIC_LIBRARY"
+            tc.cache_variables["CUDAToolkit_ROOT"] = "/usr/local/cuda"
+
+            tc.variables["onnxruntime_USE_CUDA"] = True
+            tc.variables["onnxruntime_USE_TENSORRT"] = True
+            tc.variables["onnxruntime_USE_TENSORRT_BUILTIN_PARSER"] = True
+
+            cuda_home = self._get_path("user.k1:cuda_home", "CUDA_HOME")
+            tensorrt_home = self._get_path("user.k1:tensorrt_home", "TENSORRT_HOME")
+
+            tc.variables["onnxruntime_CUDA_HOME"] = cuda_home
+            tc.variables["onnxruntime_CUDNN_HOME"] = "/sysroot/usr"
+            tc.variables["onnxruntime_TENSORRT_HOME"] = tensorrt_home
+
+            # Helpful when using a Jetson sysroot in a cross build
+            sysroot = self._get_path("user.k1:sysroot", "CMAKE_SYSROOT")
+            if sysroot:
+                tc.variables["CMAKE_SYSROOT"] = sysroot        
+
+        # may need to disable for cross compile to ARM
+        # tc.variables["onnxruntime_ENABLE_CPUINFO"] = False
 
         # Disable a warning that gets converted to an error
         tc.preprocessor_definitions["_SILENCE_ALL_CXX23_DEPRECATION_WARNINGS"] = "1"
@@ -143,8 +196,23 @@ class OnnxRuntimeConan(ConanFile):
         copy(self, "onnxruntime_external_deps.cmake",
              src=os.path.join(self.export_sources_folder, "cmake"),
              dst=os.path.join(self.source_folder, "cmake", "external"))
+        copy(self, "cudnn_frontend.cmake",
+             src=os.path.join(self.export_sources_folder, "cmake"),
+             dst=os.path.join(self.source_folder, "cmake", "external"))
+        copy(self, "onnxruntime_providers_tensorrt.cmake",
+             src=os.path.join(self.export_sources_folder, "cmake"),
+             dst=os.path.join(self.source_folder, "cmake"))
         replace_in_file(self, os.path.join(self.source_folder, "cmake", "CMakeLists.txt"),
                         "if (Git_FOUND)", "if (FALSE)")
+        replace_in_file(self, os.path.join(self.source_folder, "onnxruntime", "contrib_ops", "cuda", "bert", "group_query_attention.cc"),
+                        "Info().GetAttrOrDefault<", "Info().template GetAttrOrDefault<")
+        replace_in_file(self, os.path.join(self.source_folder, "onnxruntime", "contrib_ops", "cpu", "word_conv_embedding.h"),
+                        "Info().GetAttrOrDefault<", "Info().template GetAttrOrDefault<")
+        replace_in_file(self, os.path.join(self.source_folder, "onnxruntime", "contrib_ops", "rocm", "bert", "group_query_attention.cu"),
+                        "Info().GetAttrOrDefault<", "Info().template GetAttrOrDefault<")
+        replace_in_file(self, os.path.join(self.source_folder, "onnxruntime", "contrib_ops", "webgpu", "bert", "group_query_attention.cc"),
+                        "Info().GetAttrOrDefault<", "Info().template GetAttrOrDefault<")
+        
 
     def build(self):
         cmake = CMake(self)
@@ -155,6 +223,7 @@ class OnnxRuntimeConan(ConanFile):
         copy(self, pattern="LICENSE", dst=os.path.join(self.package_folder, "licenses"), src=self.source_folder)
         cmake = CMake(self)
         cmake.install()
+        copy(self, "libonnxruntime_providers*.so*", src=self.build_folder, dst=os.path.join(self.package_folder, "lib"))
         rmdir(self, os.path.join(self.package_folder, "lib", "pkgconfig"))
         rmdir(self, os.path.join(self.package_folder, "lib", "cmake"))
 
@@ -177,6 +246,8 @@ class OnnxRuntimeConan(ConanFile):
                 "common",
                 "flatbuffers",
             ]
+            if self.options.jetson_k1:
+                self.cpp_info.system_libs.extend(["cuda", "cudart", "nvinfer"])
             self.cpp_info.libs = [f"onnxruntime_{lib}" for lib in onnxruntime_libs]
 
         self.cpp_info.includedirs.append("include/onnxruntime")
@@ -187,8 +258,6 @@ class OnnxRuntimeConan(ConanFile):
             self.cpp_info.system_libs.append("m")
         if self.settings.os in ["Linux", "FreeBSD", "SunOS", "AIX"]:
             self.cpp_info.system_libs.append("pthread")
-        if is_apple_os(self):
-            self.cpp_info.frameworks.append("Foundation")
         if self.settings.os == "Windows":
             self.cpp_info.system_libs.append("shlwapi")
 

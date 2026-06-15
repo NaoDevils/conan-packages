@@ -4,7 +4,8 @@ sources:
     sha256: "99bcf964ce4e869d823c99b2294562a9050cbfa8e76ec81c8683cb3c7e19c2b4"
 patches:
   "1.23.2":
-    - patch_file: "patches/fix-cutlass-cuda-provider.patch"
+    - patch_file: "patches/fix-cuda-provider.patch"
+    - patch_file: "patches/fix-cuda-unittests.patch"
     - patch_file: "patches/cmake-cxx-standard.patch"
     - patch_file: "patches/fix_cppstd20.patch"
     - patch_file: "patches/fix_arm_BF16.patch"
