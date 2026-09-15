@@ -1,0 +1,14 @@
+--- cmake/onnxruntime_mlas.cmake
++++ cmake/onnxruntime_mlas.cmake
+@@ -655,7 +655,10 @@
+           ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
+           ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
+         )
+-        if(CMAKE_CXX_COMPILER_VERSION GREATER_EQUAL 13.1 AND NOT(APPLE))
++        if(CMAKE_CXX_COMPILER_VERSION GREATER_EQUAL 13.1
++          AND NOT(APPLE)
++          AND NOT(CMAKE_CXX_COMPILER_ID STREQUAL "Clang"
++            AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS_EQUAL 14))
+           set(mlas_platform_srcs_avx2
+             ${mlas_platform_srcs_avx2}
+             ${MLAS_SRC_DIR}/x86_64/cvtfp16Avx.S

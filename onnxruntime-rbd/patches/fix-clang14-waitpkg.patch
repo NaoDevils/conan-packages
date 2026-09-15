@@ -1,0 +1,14 @@
+--- onnxruntime/core/common/cpuid_info.cc
++++ onnxruntime/core/common/cpuid_info.cc
+@@ -160,7 +160,11 @@
+         if (check_intel.is_intel) {
+ #ifdef __linux__
+ #if !defined(__ANDROID__)
++#if defined(__clang__) && __clang_major__ <= 14
++          has_tpause_ = false;
++#else
+           has_tpause_ = __builtin_cpu_supports("waitpkg") != 0;
++#endif
+ #endif
+ #else
+           has_tpause_ = (data[2] & (1 << 5)) != 0;

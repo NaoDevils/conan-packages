@@ -1,0 +1,14 @@
+--- onnxruntime/core/common/spin_pause.cc
++++ onnxruntime/core/common/spin_pause.cc
+@@ -35,7 +35,11 @@
+ #if defined(_WIN32)
+     _tpause(0x0, __rdtsc() + tpause_spin_delay_cycles);
+ #elif defined(__linux__)
++#if defined(__clang__) && __clang_major__ <= 14
++    _mm_pause();
++#else
+     __builtin_ia32_tpause(0x0, __rdtsc() + tpause_spin_delay_cycles);
++#endif
+ #else
+     _mm_pause();
+ #endif
