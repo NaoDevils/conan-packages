@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.20)
+project(PackageTest LANGUAGES C)
+find_package(libvterm CONFIG REQUIRED)
+add_executable(example example.c)
+target_link_libraries(example PRIVATE libvterm::libvterm)
